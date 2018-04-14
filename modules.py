@@ -50,6 +50,17 @@ class C_conv2d(nn.Module):
              F.conv2d(complex.real, self.weight_imag, stride=self.stride, padding=self.padding)
         return Complex(x_, y_)
 
+
+class C_Linear(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super(C_Linear, self).__init__()
+        self.weight_real = nn.Parameter(nn.Linear(in_dim, out_dim).weight.data, requires_grad=True)
+        self.weight_imag = nn.Parameter(nn.Linear(in_dim, out_dim).weight.data, requires_grad=True)
+    def forward(self, complex):
+        x_ = F.linear(complex.real, self.weight_real) - F.linear(complex.imag, self.weight_imag)
+        y_ = F.linear(complex.real, self.weight_imag) + F.linear(complex.imag, self.weight_real)
+        return Complex(x_, y_)
+
 class C_ReLU(nn.Module):
     def __init__(self):
         super(C_ReLU, self).__init__()
