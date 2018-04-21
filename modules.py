@@ -89,9 +89,37 @@ class C_BatchNorm2d(nn.Module):
         # TODO
         raise NotImplementedError
 
-def complex_weight_init():
-    # TODO
-    raise NotImplementedError
+def complex_weight_init(m):
+    classname = m.__class__.__name__
+    if classname.find('C_Linear') != -1:
+        weight_real = nn.init.xavier_normal(m.weight_real.data)
+        weight_imag = nn.init.xavier_normal(m.weight_imag.data)
+        phase_real = nn.init.uniform(weight_real, a=-3.14, b=3.14)
+        phase_imag = nn.init.uniform(weight_imag, a=-3.14, b=3.14)
+        weight_real = weight_real * torch.cos(phase_real)
+        weight_imag = weight_imag  * torch.sin(phase_imag)
+        weight = torch.cat([weight_real, weight_imag], dim=-1)
+        return weight
+    
+    if classname.find('C_conv2d') != -1:
+        weight_real = nn.init.xavier_normal(m.weight_real.data)
+        weight_imag = nn.init.xavier_normal(m.weight_imag.data)
+        phase_real = nn.init.uniform(weight_real, a=-3.14, b=3.14)
+        phase_imag = nn.init.uniform(weight_imag, a=-3.14, b=3.14)
+        weight_real = weight_real * torch.cos(phase_real)
+        weight_imag = weight_imag  * torch.sin(phase_imag)
+        weight = torch.cat([weight_real, weight_imag], dim=-1)
+        return weight
+    
+    if classname.find('C_BatchNorm2d') != -1:
+        weight_real = m.weight_real.data.fill_(1)
+        weight_imag = m.weight_imag.data.fill_(1)
+        phase_real = nn.init.uniform(weight_real, a=-3.14, b=3.14)
+        phase_imag = nn.init.uniform(weight_imag, a=-3.14, b=3.14)
+        weight_real = weight_real * torch.cos(phase_real)
+        weight_imag = weight_imag  * torch.sin(phase_imag)
+        weight = torch.cat([weight_real, weight_imag], dim=-1)
+        return weight
 
 class Sample(nn.Module):
     """
@@ -117,6 +145,7 @@ def test_1():
     b = Variable(torch.rand(2,3,5,5), requires_grad=True)
     complex = Complex(a, b)
     conv1 = C_conv2d(3, 3,3,1,1)
+    complex_weight_init(conv1) # conv layer weight init.
     prev = list(conv1.parameters())[0].clone()
     res = conv1(complex)
     optimizer = optim.Adam(conv1.parameters(), 0.1)
@@ -136,6 +165,7 @@ def test_2():
     b = Variable(torch.rand(2,3,5,5), requires_grad=True)
     complex = Complex(a, b)
     model = Sample()
+    model.apply(complex_weight_init) # apply complex weights initialization 
     parameters_start = [p.clone() for p in model.parameters()]
     prev = list(model.parameters())[0].clone()
     optimizer = optim.Adam(model.parameters(), 0.1)
