@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+import numpy as np
 
 def conv_weight(in_planes, planes, kernel_size=3, stride=1, padding=0, bias=False):
     " init convolutions parameters, necessary due to code architecture "
@@ -92,34 +93,56 @@ class C_BatchNorm2d(nn.Module):
 def complex_weight_init(m):
     classname = m.__class__.__name__
     if classname.find('C_Linear') != -1:
-        weight_real = nn.init.xavier_normal(m.weight_real.data)
-        weight_imag = nn.init.xavier_normal(m.weight_imag.data)
-        phase_real = nn.init.uniform(weight_real, a=-3.14, b=3.14)
-        phase_imag = nn.init.uniform(weight_imag, a=-3.14, b=3.14)
-        weight_real = weight_real * torch.cos(phase_real)
-        weight_imag = weight_imag  * torch.sin(phase_imag)
-        weight = torch.cat([weight_real, weight_imag], dim=-1)
-        return weight
+       # real weigths
+        fan_in_real, fan_out_real = nn.init._calculate_fan_in_and_fan_out(m.weight_real.data)
+        s_real = 1. / (fan_in_real + fan_out_real) # glorot or xavier criterion
+        rng_real = np.random.RandomState(999)
+        modulus_real = rng_real.rayleigh(scale=s_real, size=m.weight_real.data.shape)
+        phase_real = rng_real.uniform(low=-np.pi, high=np.pi, size=m.weight_real.data.shape)
+        weight_real = torch.from_numpy(modulus_real) * torch.cos(torch.from_numpy(phase_real))
+        print('min linear weight real:', torch.min(weight_real))
+        # imag weights
+        fan_in_imag, fan_out_imag = nn.init._calculate_fan_in_and_fan_out(m.weight_imag.data)
+        s_imag = 1. / (fan_in_imag + fan_out_imag) # glorot or xavier criterion
+        rng_imag = np.random.RandomState(999)
+        modulus_imag = rng_imag.rayleigh(scale=s_imag, size=m.weight_imag.data.shape)
+        phase_imag = rng_imag.uniform(low=-np.pi, high=np.pi, size=m.weight_imag.data.shape)
+        weight_imag = torch.from_numpy(modulus_imag) * torch.cos(torch.from_numpy(phase_imag))
+        print('min linear weight real:', torch.max(weight_real))
     
     if classname.find('C_conv2d') != -1:
-        weight_real = nn.init.xavier_normal(m.weight_real.data)
-        weight_imag = nn.init.xavier_normal(m.weight_imag.data)
-        phase_real = nn.init.uniform(weight_real, a=-3.14, b=3.14)
-        phase_imag = nn.init.uniform(weight_imag, a=-3.14, b=3.14)
-        weight_real = weight_real * torch.cos(phase_real)
-        weight_imag = weight_imag  * torch.sin(phase_imag)
-        weight = torch.cat([weight_real, weight_imag], dim=-1)
-        return weight
+        # real weigths
+        fan_in_real, fan_out_real = nn.init._calculate_fan_in_and_fan_out(m.weight_real.data)
+        s_real = 1. / (fan_in_real + fan_out_real) # glorot or xavier criterion
+        rng_real = np.random.RandomState(999)
+        modulus_real = rng_real.rayleigh(scale=s_real, size=m.weight_real.data.shape)
+        phase_real = rng_real.uniform(low=-np.pi, high=np.pi, size=m.weight_real.data.shape)
+        weight_real = torch.from_numpy(modulus_real) * torch.cos(torch.from_numpy(phase_real))
+        print('min conv weight real:', torch.min(weight_real))
+        # imag weights
+        fan_in_imag, fan_out_imag = nn.init._calculate_fan_in_and_fan_out(m.weight_imag.data)
+        s_imag = 1. / (fan_in_imag + fan_out_imag) # glorot or xavier criterion
+        rng_imag = np.random.RandomState(999)
+        modulus_imag = rng_imag.rayleigh(scale=s_imag, size=m.weight_imag.data.shape)
+        phase_imag = rng_imag.uniform(low=-np.pi, high=np.pi, size=m.weight_imag.data.shape)
+        weight_imag = torch.from_numpy(modulus_imag) * torch.cos(torch.from_numpy(phase_imag))
+        print('min conv weight imag:', torch.max(weight_real))
     
     if classname.find('C_BatchNorm2d') != -1:
-        weight_real = m.weight_real.data.fill_(1)
-        weight_imag = m.weight_imag.data.fill_(1)
-        phase_real = nn.init.uniform(weight_real, a=-3.14, b=3.14)
-        phase_imag = nn.init.uniform(weight_imag, a=-3.14, b=3.14)
-        weight_real = weight_real * torch.cos(phase_real)
-        weight_imag = weight_imag  * torch.sin(phase_imag)
-        weight = torch.cat([weight_real, weight_imag], dim=-1)
-        return weight
+        # real weigths
+        fan_in_real, fan_out_real = nn.init._calculate_fan_in_and_fan_out(m.weight_real.data)
+        s_real = 1. / (fan_in_real + fan_out_real) # glorot or xavier criterion
+        rng_real = np.random.RandomState(999)
+        modulus_real = rng_real.rayleigh(scale=s_real, size=m.weight_real.data.shape)
+        phase_real = rng_real.uniform(low=-np.pi, high=np.pi, size=m.weight_real.data.shape)
+        weight_real = torch.from_numpy(modulus_real) * torch.cos(torch.from_numpy(phase_real))
+        # imag weights
+        fan_in_imag, fan_out_imag = nn.init._calculate_fan_in_and_fan_out(m.weight_imag.data)
+        s_imag = 1. / (fan_in_imag + fan_out_imag) # glorot or xavier criterion
+        rng_imag = np.random.RandomState(999)
+        modulus_imag = rng_imag.rayleigh(scale=s_imag, size=m.weight_imag.data.shape)
+        phase_imag = rng_imag.uniform(low=-np.pi, high=np.pi, size=m.weight_imag.data.shape)
+        weight_imag = torch.from_numpy(modulus_imag) * torch.cos(torch.from_numpy(phase_imag))
 
 class Sample(nn.Module):
     """
