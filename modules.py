@@ -100,7 +100,6 @@ def complex_weight_init(m):
         modulus_real = rng_real.rayleigh(scale=s_real, size=m.weight_real.data.shape)
         phase_real = rng_real.uniform(low=-np.pi, high=np.pi, size=m.weight_real.data.shape)
         weight_real = torch.from_numpy(modulus_real) * torch.cos(torch.from_numpy(phase_real))
-        print('min linear weight real:', torch.min(weight_real))
         # imag weights
         fan_in_imag, fan_out_imag = nn.init._calculate_fan_in_and_fan_out(m.weight_imag.data)
         s_imag = 1. / (fan_in_imag + fan_out_imag) # glorot or xavier criterion
@@ -108,7 +107,6 @@ def complex_weight_init(m):
         modulus_imag = rng_imag.rayleigh(scale=s_imag, size=m.weight_imag.data.shape)
         phase_imag = rng_imag.uniform(low=-np.pi, high=np.pi, size=m.weight_imag.data.shape)
         weight_imag = torch.from_numpy(modulus_imag) * torch.cos(torch.from_numpy(phase_imag))
-        print('min linear weight real:', torch.max(weight_real))
     
     if classname.find('C_conv2d') != -1:
         # real weigths
@@ -118,7 +116,6 @@ def complex_weight_init(m):
         modulus_real = rng_real.rayleigh(scale=s_real, size=m.weight_real.data.shape)
         phase_real = rng_real.uniform(low=-np.pi, high=np.pi, size=m.weight_real.data.shape)
         weight_real = torch.from_numpy(modulus_real) * torch.cos(torch.from_numpy(phase_real))
-        print('min conv weight real:', torch.min(weight_real))
         # imag weights
         fan_in_imag, fan_out_imag = nn.init._calculate_fan_in_and_fan_out(m.weight_imag.data)
         s_imag = 1. / (fan_in_imag + fan_out_imag) # glorot or xavier criterion
@@ -126,7 +123,6 @@ def complex_weight_init(m):
         modulus_imag = rng_imag.rayleigh(scale=s_imag, size=m.weight_imag.data.shape)
         phase_imag = rng_imag.uniform(low=-np.pi, high=np.pi, size=m.weight_imag.data.shape)
         weight_imag = torch.from_numpy(modulus_imag) * torch.cos(torch.from_numpy(phase_imag))
-        print('min conv weight imag:', torch.max(weight_real))
     
     if classname.find('C_BatchNorm2d') != -1:
         # real weigths
