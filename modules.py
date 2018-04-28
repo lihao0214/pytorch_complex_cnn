@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+from torch.nn.parameter import Parameter
 
 def conv_weight(in_planes, planes, kernel_size=3, stride=1, padding=0, bias=False, transpose=False):
     " init convolutions parameters, necessary due to code architecture "
@@ -24,6 +25,12 @@ class Complex(nn.Module):
             self.imag = None
         else:
             self.imag = imag
+        if self.real is not None:
+            self.shape = self.real.shape
+            self.size = self.real.size
+        else:
+            self.shape = None
+            self.size = None
 
     def mag(self):
         return torch.sqrt(self.real**2 + self.imag**2)
@@ -34,10 +41,13 @@ class Complex(nn.Module):
     def from_polar(self, mag, phase):
         self.real = mag*torch.cos(phase)
         self.imag = mag*torch.sin(phase)
-        return
-
+        return  
+        
+    def view(self, *params):
+        return Complex(self.real.view(*params), self.imag.view(*params))
+    
     def __repr__(self):
-        print(f'Complex Variable containing:\nreal:\n{self.real}imaginary:\n{self.imag}')
+        #print(f'Complex Variable containing:\nreal:\n{self.real}imaginary:\n{self.imag}') <- does'nt work
         return ''
 
 class C_convtranspose2d(nn.Module):
@@ -55,8 +65,8 @@ class C_convtranspose2d(nn.Module):
              F.conv_transpose2d(complex.real, self.weight_imag, stride=self.stride, padding=self.padding)
         return Complex(x_, y_)
 
-class C_conv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+class C_conv2d(nn.Module):    
+    def __init__(self, in_channels, out_channels, kernel_size, stride = 1, padding = 0):
         super(C_conv2d, self).__init__()
         self.stride = stride
         self.padding = padding
@@ -71,6 +81,169 @@ class C_conv2d(nn.Module):
 
         return Complex(x_, y_)
 
+class C_BatchNorm2d(nn.Module):
+    def __init__(self, num_features, affine = True, epsilon = 1e-4, check = False,\
+                 momentum = 0.1, track_running_stats=True):
+        super(C_BatchNorm2d, self).__init__()
+        self.check = check
+        self.affine = affine
+        self.epsilon = epsilon
+        self.momentum = momentum
+        self.track_running_stats = track_running_stats
+        
+        if self.affine:
+            self.bias_real = Parameter(torch.Tensor(num_features), requires_grad = True)
+            self.bias_imag = Parameter(torch.Tensor(num_features), requires_grad = True)
+            
+            self.gamma_rr = Parameter(torch.Tensor(num_features), requires_grad = True)
+            self.gamma_ri = Parameter(torch.Tensor(num_features), requires_grad = True)
+            self.gamma_ii = Parameter(torch.Tensor(num_features), requires_grad = True)           
+        else:
+            self.register_parameter('bias_real', None)
+            self.register_parameter('bias_imag', None)
+            
+            self.register_parameter('gamma_rr', None)
+            self.register_parameter('gamma_ri', None)
+            self.register_parameter('gamma_ii', None)
+            
+        if self.track_running_stats:
+            self.register_buffer('running_mean_real', torch.zeros(num_features))
+            self.register_buffer('running_mean_imag', torch.zeros(num_features))
+            
+            self.register_buffer('running_Vrr', torch.ones(num_features) / float(np.sqrt(2.0)))
+            self.register_buffer('running_Vii', torch.ones(num_features) / float(np.sqrt(2.0)))
+            self.register_buffer('running_Vri', torch.zeros(num_features))
+            
+            self.register_buffer('num_batches_tracked', torch.zeros(1))
+        else:
+            self.register_buffer('running_mean_real', None)
+            self.register_buffer('running_mean_imag', None)
+            
+            self.register_buffer('running_Vrr', None)
+            self.register_buffer('running_Vii', None)
+            self.register_buffer('running_Vri', None)
+            
+            self.register_buffer('num_batches_tracked', None)
+            
+        self.reset_parameters()
+    
+    def reset_running_stats(self):
+        if self.track_running_stats:
+            self.running_mean_real.zero_()
+            self.running_mean_imag.zero_()
+            
+            
+            self.running_Vrr.fill_(1.0 / float(np.sqrt(2.0)))
+            self.running_Vii.fill_(1.0 / float(np.sqrt(2.0)))
+            self.running_Vri.zero_()
+            
+            self.num_batches_tracked.zero_()            
+        
+    def reset_parameters(self):
+        self.reset_running_stats()
+        if self.affine:
+            nn.init.constant(self.bias_real.data, 0.0)
+            nn.init.constant(self.bias_imag.data, 0.0)
+            
+            nn.init.constant(self.gamma_rr.data, float(np.sqrt(0.5)))
+            nn.init.constant(self.gamma_ri.data, float(np.sqrt(0.5)))
+            nn.init.constant(self.gamma_ii.data, float(np.sqrt(0.5)))            
+    
+    def extra_repr(self):
+        return '{num_features}, eps={eps}, momentum={momentum}, affine={affine}, ' \
+               'track_running_stats={track_running_stats}'.format(**self.__dict__)
+        
+    def forward(self, complex):
+        real = complex.real
+        imag = complex.imag
+        if self.training:
+            def mean_along_multiple_dimensions(tensor, dims):
+                for i, dim in enumerate(np.sort(dims)):
+                    tensor = torch.mean(tensor, dim = int(dim - i))
+                return tensor
+            real_means = mean_along_multiple_dimensions(real, dims = [0, 2, 3])
+            imag_means = mean_along_multiple_dimensions(imag, dims = [0, 2, 3])
+            
+            self.running_mean_real = self.running_mean_real * self.momentum + (1.0 - self.momentum) * real_means.data
+            self.running_mean_imag = self.running_mean_imag * self.momentum + (1.0 - self.momentum) * imag_means.data
+            
+            real_means = real_means.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            imag_means = imag_means.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)       
+            real_centered = real - real_means
+            imag_centered = imag - imag_means
+
+            def sum_along_multiple_dimensions(tensor, dims):
+                for i, dim in enumerate(np.sort(dims)):
+                    tensor = torch.sum(tensor, dim = int(dim - i))
+                return tensor
+            Vrr = mean_along_multiple_dimensions(real_centered * real_centered, dims = [0, 2, 3]) + self.epsilon
+            Vri = mean_along_multiple_dimensions(real_centered * imag_centered, dims = [0, 2, 3])
+            Vii = mean_along_multiple_dimensions(imag_centered * imag_centered, dims = [0, 2, 3]) + self.epsilon
+            
+            self.running_Vrr = self.running_Vrr * self.momentum + (1.0 - self.momentum) * Vrr.data
+            self.running_Vri = self.running_Vri * self.momentum + (1.0 - self.momentum) * Vri.data
+            self.running_Vii = self.running_Vii * self.momentum + (1.0 - self.momentum) * Vii.data
+            
+           
+            self.num_batches_tracked += 1
+            
+            
+        else:
+            real_means = Variable(self.running_mean_real.unsqueeze(0).unsqueeze(-1).unsqueeze(-1), requires_grad = False)
+            imag_means = Variable(self.running_mean_imag.unsqueeze(0).unsqueeze(-1).unsqueeze(-1), requires_grad = False)
+            
+            Vrr = Variable(self.running_Vrr, requires_grad = False)
+            Vri = Variable(self.running_Vri, requires_grad = False)
+            Vii = Variable(self.running_Vii, requires_grad = False)
+            
+            real_centered = real - real_means
+            imag_centered = imag - imag_means
+            
+        
+        tau = Vrr + Vii
+        delta = (Vrr * Vii) - (Vri ** 2)
+        s = torch.sqrt(delta)
+        t = torch.sqrt(tau + 2 * s)
+        
+        inverse_st = 1.0 / (float(np.sqrt(2.0)) * s * t)
+        Wrr = (Vii + s) * inverse_st
+        Wii = (Vrr + s) * inverse_st
+        Wri = -Vri * inverse_st
+        
+        Wrr = Wrr.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        Wri = Wri.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        Wii = Wii.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        
+        real_normed = Wrr * real_centered + Wri * imag_centered
+        imag_normed = Wri * real_centered + Wii * imag_centered
+        
+        if self.check:
+            result_real_means = mean_along_multiple_dimensions(real_normed, dims = [0, 2, 3])
+            result_imag_means = mean_along_multiple_dimensions(imag_normed, dims = [0, 2, 3])
+            
+            print("real part of result means: ", result_real_means)
+            print("imag part of result means: ", result_imag_means)
+            
+            Vrr = mean_along_multiple_dimensions(real_normed * real_normed, dims = [0, 2, 3]) + self.epsilon
+            Vri = mean_along_multiple_dimensions(real_normed * imag_normed, dims = [0, 2, 3])
+            Vii = mean_along_multiple_dimensions(imag_normed * imag_normed, dims = [0, 2, 3]) + self.epsilon
+            
+            print('covariance: ', Vrr + Vii)
+            
+            print('real part of relation: ', Vrr - Vii)
+            print('iamg part of relation: ', 2 * Vri)
+            
+        gamma_rr = self.gamma_rr.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        gamma_ri = self.gamma_ri.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        gamma_ii = self.gamma_ii.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        
+        bias_real = self.bias_real.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        bias_imag = self.bias_imag.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        ans_real = real_normed * gamma_rr + imag_normed * gamma_ri + bias_real
+        ans_imag = real_normed * gamma_ri + imag_normed * gamma_ii + bias_imag
+        #print(ans_real.shape)
+        #print(ans_imag.shape)
+        return Complex(ans_real, ans_imag)
 
 class C_Linear(nn.Module):
     def __init__(self, in_dim, out_dim):
@@ -113,13 +286,7 @@ class Mod_ReLU(nn.Module):
         res.from_polar(mag, complex.phase())
         return res
 
-class C_BatchNorm2d(nn.Module):
-    def __init__(self):
-        super(C_BatchNorm2d, self).__init__()
 
-    def forward(self, complex):
-        # TODO
-        raise NotImplementedError
 
 def complex_weight_init(m):
     classname = m.__class__.__name__
